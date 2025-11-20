@@ -6,15 +6,19 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import TimerScreen from './src/screens/TimerScreen';
 import ReportsScreen from './src/screens/ReportsScreen';
 
+import { HistoryProvider } from './src/context/HistoryContext';
+
 const Tab = createBottomTabNavigator();
 
 export default function App() {
   return (
-    <NavigationContainer>
-      <Tab.Navigator screenOptions={{ headerTitleAlign: 'center' }}>
-        <Tab.Screen name="Zamanlayıcı" component={TimerScreen} />
-        <Tab.Screen name="Raporlar" component={ReportsScreen} />
-      </Tab.Navigator>
-    </NavigationContainer>
+    <HistoryProvider>
+      <NavigationContainer>
+        <Tab.Navigator screenOptions={{ headerTitleAlign: 'center' }}>
+          <Tab.Screen name="Zamanlayıcı" component={TimerScreen} />
+          <Tab.Screen name="Raporlar" component={ReportsScreen} />
+        </Tab.Navigator>
+      </NavigationContainer>
+    </HistoryProvider>
   );
 }

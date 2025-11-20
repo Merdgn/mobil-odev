@@ -1,13 +1,19 @@
 import { View, Text, StyleSheet, FlatList, TouchableOpacity } from 'react-native';
-import { useFocusHistory } from '../hooks/useFocusHistory';
+import { useHistoryContext } from "../context/HistoryContext";
 
 export default function ReportsScreen() {
-  const { history, clearHistory } = useFocusHistory();
+  const { history, clearHistory } = useHistoryContext();
 
-  const formatDuration = (seconds: number) => {
-    const minutes = Math.floor(seconds / 60);
-    return `${minutes} dakika`;
-  };
+const formatDuration = (seconds: number) => {
+  if (seconds < 60) {
+    return `${seconds} saniye`;
+  }
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+
+  if (s === 0) return `${m} dakika`;
+  return `${m} dakika ${s} saniye`;
+};
 
   const formatDate = (iso: string) => {
     const d = new Date(iso);
@@ -27,10 +33,12 @@ export default function ReportsScreen() {
           contentContainerStyle={{ paddingVertical: 20 }}
           renderItem={({ item }) => (
             <View style={styles.card}>
-              <Text style={styles.mode}>{item.mode}</Text>
-              <Text style={styles.text}>⏱ Süre: {formatDuration(item.duration)}</Text>
-              <Text style={styles.text}>📅 Tarih: {formatDate(item.date)}</Text>
-            </View>
+  <Text style={styles.mode}>{item.mode}</Text>
+  <Text style={styles.text}>🏷 Kategori: {item.category}</Text>
+  <Text style={styles.text}>⏱ Süre: {formatDuration(item.duration)}</Text>
+  <Text style={styles.text}>📅 Tarih: {formatDate(item.date)}</Text>
+</View>
+
           )}
         />
       )}
