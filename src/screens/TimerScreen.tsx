@@ -1,11 +1,18 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, Button, Alert, TouchableOpacity } from 'react-native';
+import { useFocusHistory } from '../hooks/useFocusHistory';
+
+// 🔥 DEMO MODU
+// Sunumda: true
+// Normal kullanımda: false
+const DEMO_MODE = false;
 
 const DURATIONS = {
-  short: 15 * 60,
-  pomodoro: 25 * 60,
-  long: 50 * 60,
+  short: DEMO_MODE ? 15 : 15 * 60,
+  pomodoro: DEMO_MODE ? 25 : 25 * 60,
+  long: DEMO_MODE ? 50 : 50 * 60,
 };
+
 
 export default function TimerScreen() {
   const [selectedMode, setSelectedMode] = useState<'short' | 'pomodoro' | 'long'>('pomodoro');
@@ -13,7 +20,9 @@ export default function TimerScreen() {
   const [running, setRunning] = useState<boolean>(false);
   const intervalRef = useRef<number | null>(null);
 
-  // Süre seçildiğinde sayaç sıfırlansın
+  const { addHistory } = useFocusHistory();
+
+  // Mod değiştiğinde süre sıfırlanır
   useEffect(() => {
     setRunning(false);
     setSeconds(DURATIONS[selectedMode]);
@@ -25,13 +34,45 @@ export default function TimerScreen() {
     if (running) {
       intervalRef.current = setInterval(() => {
         setSeconds((prev) => {
-          if (prev <= 1) {
-            if (intervalRef.current !== null) clearInterval(intervalRef.current);
-            intervalRef.current = null;
-            setRunning(false);
-            Alert.alert("Süre Bitti!", `${format(DURATIONS[selectedMode])} tamamlandı.`);
-            return 0;
-          }
+if (prev <= 1) {
+  if (intervalRef.current !== null) clearInterval(intervalRef.current);
+  intervalRef.current = null;
+  setRunning(false);
+
+  // GEÇMİŞE KAYIT
+  const sessionMinutes =
+    selectedMode === "short"
+      ? 15
+      : selectedMode === "pomodoro"
+      ? 25
+      : 50;
+
+  addHistory({
+    id: Date.now().toString(),
+    mode:
+      selectedMode === "short"
+        ? "Kısa"
+        : selectedMode === "pomodoro"
+        ? "Pomodoro"
+        : "Uzun",
+    duration: sessionMinutes * 60,
+    date: new Date().toISOString(),
+  });
+
+  // ALERT MESAJI
+  const totalSeconds = DURATIONS[selectedMode];
+  const mins = Math.floor(totalSeconds / 60);
+  const secs = totalSeconds % 60;
+
+  const formattedText =
+    mins === 0
+      ? `${secs} saniyelik oturum tamamlandı.`
+      : `${mins} dakikalık oturum tamamlandı.`;
+
+  Alert.alert("Süre Bitti!", formattedText);
+
+  return 0;
+}
           return prev - 1;
         });
       }, 1000) as unknown as number;
@@ -74,14 +115,14 @@ export default function TimerScreen() {
     <View style={styles.container}>
       <Text style={styles.title}>Odak Modu</Text>
 
-      {/* MOD SEÇİCİ */}
+      {/* Mod Seçici */}
       <View style={styles.modeContainer}>
         <ModeButton label="Kısa" mode="short" />
         <ModeButton label="Pomodoro" mode="pomodoro" />
         <ModeButton label="Uzun" mode="long" />
       </View>
 
-      {/* SAYAC */}
+      {/* Sayaç */}
       <Text style={styles.time}>{format(seconds)}</Text>
 
       <View style={styles.buttons}>
@@ -99,15 +140,12 @@ export default function TimerScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 16 },
   title: { fontSize: 20, fontWeight: '600', marginBottom: 20 },
-  
   modeContainer: { flexDirection: 'row', gap: 10, marginBottom: 30 },
   modeButton: { paddingVertical: 10, paddingHorizontal: 16, borderRadius: 8 },
   modeButtonActive: { backgroundColor: '#4287f5' },
   modeButtonInactive: { backgroundColor: '#e4e4e4' },
   modeTextActive: { color: 'white', fontWeight: '600' },
   modeTextInactive: { color: '#333', fontWeight: '500' },
-
   time: { fontSize: 58, fontWeight: 'bold', marginBottom: 30 },
-
   buttons: { flexDirection: 'row', gap: 16 },
 });
