@@ -1,13 +1,15 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
   StyleSheet,
   Button,
+  Alert,
   TouchableOpacity,
   Modal,
-} from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+  AppState,
+  Platform,
+} from "react-native";
 import { useHistoryContext } from "../context/HistoryContext";
 
 // 🔥 DEMO MODU
@@ -19,114 +21,306 @@ const DURATIONS = {
   long: DEMO_MODE ? 50 : 50 * 60,
 };
 
-type SummaryData = {
+type SessionSummary = {
   modeLabel: string;
   category: string;
   durationSeconds: number;
-  finishedAt: Date;
+  distractions: number;
+  finishedAt: string;
+  completed: boolean;
+  elapsedSeconds: number;
+  remainingSeconds: number;
 };
 
 export default function TimerScreen() {
   const [selectedMode, setSelectedMode] =
-    useState<'short' | 'pomodoro' | 'long'>('pomodoro');
+    useState<"short" | "pomodoro" | "long">("pomodoro");
   const [seconds, setSeconds] = useState<number>(DURATIONS.pomodoro);
   const [running, setRunning] = useState<boolean>(false);
   const intervalRef = useRef<number | null>(null);
 
+  // 🔹 Kategori seçimi
   const [categoryModalVisible, setCategoryModalVisible] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-
-  const [summaryVisible, setSummaryVisible] = useState(false);
-  const [summaryData, setSummaryData] = useState<SummaryData | null>(null);
+  // Bu ref seans boyunca kategoriyi tutar (kaybolmaz)
+  const sessionCategoryRef = useRef<string | null>(null);
 
   const { addHistory } = useHistoryContext();
-  const navigation = useNavigation<any>();
 
-  // Mod değişince süre değişir
+  // Dikkat dağınıklığı
+  const [distractions, setDistractions] = useState(0);
+
+  // AppState takibi
+  const appState = useRef(AppState.currentState);
+  const runningRef = useRef(running);
+  const secondsRef = useRef(seconds);
+  const distractionsRef = useRef(distractions);
+  const [needToAskOnReturn, setNeedToAskOnReturn] = useState(false);
+  const needToAskOnReturnRef = useRef(needToAskOnReturn);
+
+  // Seans özeti
+  const [summaryVisible, setSummaryVisible] = useState(false);
+  const [summary, setSummary] = useState<SessionSummary | null>(null);
+
+  // ---- Ref'leri güncel tut ----
   useEffect(() => {
-    setRunning(false);
-    setSeconds(DURATIONS[selectedMode]);
+    runningRef.current = running;
+  }, [running]);
 
-    if (intervalRef.current !== null) clearInterval(intervalRef.current);
+  useEffect(() => {
+    secondsRef.current = seconds;
+  }, [seconds]);
+
+  useEffect(() => {
+    distractionsRef.current = distractions;
+  }, [distractions]);
+
+  useEffect(() => {
+    needToAskOnReturnRef.current = needToAskOnReturn;
+  }, [needToAskOnReturn]);
+
+  // ---- AppState Listener (sadece mobil) ----
+  useEffect(() => {
+    if (Platform.OS === "web") return;
+
+    const subscription = AppState.addEventListener("change", (nextState) => {
+      const prevState = appState.current;
+      appState.current = nextState;
+
+      // Aktifken arka plana geçti
+      if (prevState === "active" && nextState.match(/inactive|background/)) {
+        if (runningRef.current) {
+          setDistractions((prev) => prev + 1); // dikkat dağınıklığı say
+          setRunning(false); // sayacı durdur
+          setNeedToAskOnReturn(true); // geri dönünce sor
+        }
+      }
+
+      // Arka plandan tekrar aktif oldu
+      if (
+        (prevState === "inactive" || prevState === "background") &&
+        nextState === "active"
+      ) {
+        if (needToAskOnReturnRef.current && secondsRef.current > 0) {
+          Alert.alert(
+            "Dikkat Dağıldı 😟",
+            "Oturum duraklatıldı. Devam etmek ister misin?",
+            [
+              {
+                text: "Hayır",
+                style: "cancel",
+                onPress: () => {
+                  handleGiveUp();
+                  setNeedToAskOnReturn(false);
+                },
+              },
+              {
+                text: "Evet",
+                onPress: () => {
+                  // 🔥 Eski kategoriyi aynen koru, sadece devam et
+                  setRunning(true);
+                  setNeedToAskOnReturn(false);
+                },
+              },
+            ]
+          );
+        }
+      }
+    });
+
+    return () => subscription.remove();
+  }, []);
+
+  // ---- Mod değişince reset ----
+  useEffect(() => {
+    reset(); // alttaki reset fonksiyonunu kullanıyoruz
   }, [selectedMode]);
 
-  // Sayaç
+  // ---- Sayaç geri sayım ----
   useEffect(() => {
-    if (running) {
-      intervalRef.current = setInterval(() => {
-        setSeconds((prev) => {
-          if (prev <= 1) {
-            if (intervalRef.current !== null) clearInterval(intervalRef.current);
-            intervalRef.current = null;
-            setRunning(false);
-
-            const realDuration = DURATIONS[selectedMode];
-            const modeLabel =
-              selectedMode === "short"
-                ? "Kısa"
-                : selectedMode === "pomodoro"
-                ? "Pomodoro"
-                : "Uzun";
-            const category = selectedCategory ?? "Belirtilmedi";
-            const finishedAt = new Date();
-
-            // 🟢 Özet verisini state’e koy (modal için)
-            setSummaryData({
-              modeLabel,
-              category,
-              durationSeconds: realDuration,
-              finishedAt,
-            });
-            setSummaryVisible(true);
-
-            // 🟢 Geçmiş kaydı — setState çatışmasını önlemek için timeout
-            setTimeout(() => {
-              addHistory({
-                id: Date.now().toString(),
-                mode: modeLabel,
-                duration: realDuration,
-                date: finishedAt.toISOString(),
-                category,
-              });
-            }, 0);
-
-            return 0;
-          }
-
-          return prev - 1;
-        });
-      }, 1000) as unknown as number;
+    if (!running) {
+      if (intervalRef.current !== null) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+      return;
     }
 
-    return () => {
-      if (intervalRef.current !== null) clearInterval(intervalRef.current);
-    };
-  }, [running, selectedMode, selectedCategory]);
+    intervalRef.current = setInterval(() => {
+      setSeconds((prev) => {
+        if (prev <= 1) {
+          if (intervalRef.current !== null) {
+            clearInterval(intervalRef.current);
+            intervalRef.current = null;
+          }
+          setRunning(false);
+          handleComplete(); // bitti
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000) as unknown as number;
 
-  // ⏳ Başlat → önce kategori seçme modali
+    return () => {
+      if (intervalRef.current !== null) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+    };
+  }, [running, selectedMode]);
+
+  // ---- Süre doğal bitti → tamamlanan seans ----
+  const handleComplete = () => {
+    const realDuration = DURATIONS[selectedMode];
+    const modeLabel =
+      selectedMode === "short"
+        ? "Kısa"
+        : selectedMode === "pomodoro"
+        ? "Pomodoro"
+        : "Uzun";
+
+    const categoryLabel =
+      sessionCategoryRef.current ?? selectedCategory ?? "Belirtilmedi";
+
+    const finishedAt = new Date().toISOString();
+
+    const summaryData: SessionSummary = {
+      modeLabel,
+      category: categoryLabel,
+      durationSeconds: realDuration,
+      distractions: distractionsRef.current,
+      finishedAt,
+      completed: true,
+      elapsedSeconds: realDuration,
+      remainingSeconds: 0,
+    };
+
+    // Geçmişe kaydı bir sonraki "tick"te yap → React uyarısı olmasın
+    setTimeout(() => {
+      addHistory({
+        id: Date.now().toString(),
+        mode: modeLabel,
+        duration: realDuration,
+        date: finishedAt,
+        category: categoryLabel,
+        distractions: distractionsRef.current,
+        completed: true,
+        elapsedSeconds: realDuration,
+        remainingSeconds: 0,
+      });
+    }, 0);
+
+    setSummary(summaryData);
+    setSummaryVisible(true);
+
+    // Yeni oturum için sıfırla
+    setDistractions(0);
+    setNeedToAskOnReturn(false);
+    sessionCategoryRef.current = null;
+    setSelectedCategory(null);
+  };
+
+  // ---- Kullanıcı “Hayır” dedi → tamamlanamayan seans ----
+  const handleGiveUp = () => {
+    const realDuration = DURATIONS[selectedMode];
+    const remaining = secondsRef.current;
+    const elapsed = realDuration - remaining;
+
+    const modeLabel =
+      selectedMode === "short"
+        ? "Kısa"
+        : selectedMode === "pomodoro"
+        ? "Pomodoro"
+        : "Uzun";
+
+    const categoryLabel =
+      sessionCategoryRef.current ?? selectedCategory ?? "Belirtilmedi";
+
+    const finishedAt = new Date().toISOString();
+
+    const summaryData: SessionSummary = {
+      modeLabel,
+      category: categoryLabel,
+      durationSeconds: realDuration,
+      distractions: distractionsRef.current,
+      finishedAt,
+      completed: false,
+      elapsedSeconds: elapsed < 0 ? 0 : elapsed,
+      remainingSeconds: remaining,
+    };
+
+    setTimeout(() => {
+      addHistory({
+        id: Date.now().toString(),
+        mode: modeLabel,
+        duration: realDuration,
+        date: finishedAt,
+        category: categoryLabel,
+        distractions: distractionsRef.current,
+        completed: false,
+        elapsedSeconds: elapsed < 0 ? 0 : elapsed,
+        remainingSeconds: remaining,
+      });
+    }, 0);
+
+    setSummary(summaryData);
+    setSummaryVisible(true);
+
+    setRunning(false);
+    setSeconds(DURATIONS[selectedMode]);
+    setDistractions(0);
+    setNeedToAskOnReturn(false);
+    sessionCategoryRef.current = null;
+    setSelectedCategory(null);
+  };
+
+  // ---- Başlat → önce kategori seçtir ----
   const startWithCategory = () => {
     setCategoryModalVisible(true);
   };
 
-  // Kategori seçme → sayaç başlar
   const chooseCategory = (cat: string) => {
+    // Seans kategorisi artık sabit
+    sessionCategoryRef.current = cat;
     setSelectedCategory(cat);
     setCategoryModalVisible(false);
     setRunning(true);
+    setNeedToAskOnReturn(false);
   };
 
-  const pause = () => setRunning(false);
+  const pause = () => {
+    setRunning(false);
+    setNeedToAskOnReturn(false);
+  };
 
   const reset = () => {
     setRunning(false);
-    if (intervalRef.current !== null) clearInterval(intervalRef.current);
+    if (intervalRef.current !== null) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
     setSeconds(DURATIONS[selectedMode]);
+    setDistractions(0);
+    setNeedToAskOnReturn(false);
+    sessionCategoryRef.current = null;
+    setSelectedCategory(null);
   };
 
-  const formatClock = (s: number) => {
+  // ---- Format helpers ----
+  const format = (s: number) => {
     const m = Math.floor(s / 60);
     const r = s % 60;
-    return `${m.toString().padStart(2, '0')}:${r.toString().padStart(2, '0')}`;
+    return `${m.toString().padStart(2, "0")}:${r
+      .toString()
+      .padStart(2, "0")}`;
+  };
+
+  const formatHumanDuration = (seconds: number) => {
+    if (seconds < 60) return `${seconds} saniyelik`;
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    if (s === 0) return `${m} dakikalık`;
+    return `${m} dakika ${s} saniyelik`;
   };
 
   const formatDuration = (seconds: number) => {
@@ -142,43 +336,50 @@ export default function TimerScreen() {
     mode,
   }: {
     label: string;
-    mode: 'short' | 'pomodoro' | 'long';
+    mode: "short" | "pomodoro" | "long";
   }) => (
     <TouchableOpacity
       onPress={() => setSelectedMode(mode)}
       style={[
         styles.modeButton,
-        selectedMode === mode ? styles.modeButtonActive : styles.modeButtonInactive,
+        selectedMode === mode
+          ? styles.modeButtonActive
+          : styles.modeButtonInactive,
       ]}
     >
-      <Text style={selectedMode === mode ? styles.modeTextActive : styles.modeTextInactive}>
+      <Text
+        style={
+          selectedMode === mode
+            ? styles.modeTextActive
+            : styles.modeTextInactive
+        }
+      >
         {label}
       </Text>
     </TouchableOpacity>
   );
 
-  const closeSummary = () => {
-    setSummaryVisible(false);
-  };
-
-  const goToReports = () => {
-    setSummaryVisible(false);
-    navigation.navigate("Raporlar");
-  };
+  const currentCategoryLabel =
+    selectedCategory ?? sessionCategoryRef.current ?? "Henüz seçilmedi";
 
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Odak Modu</Text>
 
-      {/* Mod Seçici */}
       <View style={styles.modeContainer}>
         <ModeButton label="Kısa" mode="short" />
         <ModeButton label="Pomodoro" mode="pomodoro" />
         <ModeButton label="Uzun" mode="long" />
       </View>
 
-      {/* Sayaç */}
-      <Text style={styles.time}>{formatClock(seconds)}</Text>
+      <Text style={styles.time}>{format(seconds)}</Text>
+
+      <Text style={styles.infoText}>
+        Seçilen kategori: {currentCategoryLabel}
+      </Text>
+      <Text style={styles.infoText}>
+        Dikkat Dağınıklığı: {distractions}
+      </Text>
 
       <View style={styles.buttons}>
         {!running ? (
@@ -189,9 +390,9 @@ export default function TimerScreen() {
         <Button title="Sıfırla" onPress={reset} />
       </View>
 
-      {/* 🟣 Kategori Modalı */}
-      <Modal visible={categoryModalVisible} transparent animationType="fade">
-        <View style={styles.overlay}>
+      {/* Kategori Modalı */}
+      <Modal visible={categoryModalVisible} transparent animationType="slide">
+        <View style={styles.modalContainer}>
           <View style={styles.modalBox}>
             <Text style={styles.modalTitle}>Kategori Seç</Text>
 
@@ -215,41 +416,51 @@ export default function TimerScreen() {
         </View>
       </Modal>
 
-      {/* 🟡 Oturum Özeti Modalı */}
+      {/* Seans Özeti Modalı */}
       <Modal visible={summaryVisible} transparent animationType="fade">
-        <View style={styles.overlay}>
+        <View style={styles.summaryOverlay}>
           <View style={styles.summaryBox}>
-            <Text style={styles.summaryTitle}>Oturum Özeti</Text>
+            <Text style={styles.summaryTitle}>Seans Özeti</Text>
 
-            {summaryData && (
+            {summary && (
               <>
-                <Text style={styles.summaryLine}>
-                  <Text style={styles.summaryLabel}>Mod: </Text>
-                  {summaryData.modeLabel}
+                <Text style={styles.summaryText}>
+                  {formatHumanDuration(summary.durationSeconds)} "
+                  {summary.category}" oturumu{" "}
+                  {summary.completed ? "tamamlandı." : "tamamlanamadı."}
                 </Text>
-                <Text style={styles.summaryLine}>
-                  <Text style={styles.summaryLabel}>Kategori: </Text>
-                  {summaryData.category}
+                <Text style={styles.summaryText}>
+                  Mod: {summary.modeLabel}
                 </Text>
-                <Text style={styles.summaryLine}>
-                  <Text style={styles.summaryLabel}>Süre: </Text>
-                  {formatDuration(summaryData.durationSeconds)}
+                <Text style={styles.summaryText}>
+                  Hedef Süre: {formatDuration(summary.durationSeconds)}
                 </Text>
-                <Text style={styles.summaryLine}>
-                  <Text style={styles.summaryLabel}>Bitiş: </Text>
-                  {summaryData.finishedAt.toLocaleTimeString()}
+                {!summary.completed && (
+                  <>
+                    <Text style={styles.summaryText}>
+                      Geçen Süre: {formatDuration(summary.elapsedSeconds)}
+                    </Text>
+                    <Text style={styles.summaryText}>
+                      Kalan Süre: {formatDuration(summary.remainingSeconds)}
+                    </Text>
+                  </>
+                )}
+                <Text style={styles.summaryText}>
+                  Dikkat Dağınıklığı Sayısı: {summary.distractions}
+                </Text>
+                <Text style={styles.summaryText}>
+                  Bitiş Zamanı:{" "}
+                  {new Date(summary.finishedAt).toLocaleTimeString()}
                 </Text>
               </>
             )}
 
-            <View style={styles.summaryButtons}>
-              <TouchableOpacity style={styles.summaryBtnSecondary} onPress={closeSummary}>
-                <Text style={styles.summaryBtnTextSecondary}>Tamam</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.summaryBtnPrimary} onPress={goToReports}>
-                <Text style={styles.summaryBtnTextPrimary}>Raporları Gör</Text>
-              </TouchableOpacity>
-            </View>
+            <TouchableOpacity
+              style={styles.summaryButton}
+              onPress={() => setSummaryVisible(false)}
+            >
+              <Text style={styles.summaryButtonText}>Tamam</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -258,99 +469,87 @@ export default function TimerScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 16 },
-  title: { fontSize: 22, fontWeight: '700', marginBottom: 20 },
-  modeContainer: { flexDirection: 'row', gap: 10, marginBottom: 30 },
+  container: { flex: 1, alignItems: "center", justifyContent: "center", padding: 16 },
+  title: { fontSize: 22, fontWeight: "700", marginBottom: 20 },
+  modeContainer: { flexDirection: "row", gap: 10, marginBottom: 20 },
   modeButton: { paddingVertical: 10, paddingHorizontal: 16, borderRadius: 8 },
-  modeButtonActive: { backgroundColor: '#4287f5' },
-  modeButtonInactive: { backgroundColor: '#e4e4e4' },
-  modeTextActive: { color: 'white', fontWeight: '600' },
-  modeTextInactive: { color: '#333', fontWeight: '500' },
-  time: { fontSize: 58, fontWeight: 'bold', marginBottom: 30 },
-  buttons: { flexDirection: 'row', gap: 16 },
+  modeButtonActive: { backgroundColor: "#4287f5" },
+  modeButtonInactive: { backgroundColor: "#e4e4e4" },
+  modeTextActive: { color: "white", fontWeight: "600" },
+  modeTextInactive: { color: "#333", fontWeight: "500" },
 
-  overlay: {
+  time: { fontSize: 58, fontWeight: "bold", marginBottom: 10 },
+
+  infoText: {
+    fontSize: 14,
+    color: "#555",
+    marginBottom: 4,
+  },
+
+  buttons: { flexDirection: "row", gap: 16, marginTop: 16 },
+
+  // Kategori modalı
+  modalContainer: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.45)',
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center",
+    alignItems: "center",
   },
   modalBox: {
-    backgroundColor: 'white',
-    width: '80%',
-    borderRadius: 16,
+    backgroundColor: "white",
+    width: "80%",
+    borderRadius: 12,
     padding: 20,
   },
   modalTitle: {
     fontSize: 20,
-    fontWeight: '700',
+    fontWeight: "700",
     marginBottom: 15,
-    textAlign: 'center',
+    textAlign: "center",
   },
   categoryItem: {
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#eee',
+    borderBottomColor: "#ddd",
   },
   categoryText: {
     fontSize: 18,
-    textAlign: 'center',
+    textAlign: "center",
   },
 
-  // Özet kartı
+  // Seans özeti modalı
+  summaryOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.6)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
   summaryBox: {
-    backgroundColor: 'white',
-    width: '85%',
-    borderRadius: 20,
+    backgroundColor: "white",
+    width: "85%",
+    borderRadius: 16,
     padding: 22,
-    shadowColor: '#000',
-    shadowOpacity: 0.15,
-    shadowRadius: 10,
-    elevation: 8,
   },
   summaryTitle: {
     fontSize: 22,
-    fontWeight: '800',
-    marginBottom: 16,
-    textAlign: 'center',
+    fontWeight: "800",
+    marginBottom: 12,
+    textAlign: "center",
   },
-  summaryLine: {
+  summaryText: {
     fontSize: 16,
     marginBottom: 6,
   },
-  summaryLabel: {
-    fontWeight: '700',
-  },
-  summaryButtons: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 18,
-  },
-  summaryBtnSecondary: {
-    flex: 1,
+  summaryButton: {
+    marginTop: 14,
+    backgroundColor: "#4287f5",
     paddingVertical: 10,
     borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#ccc',
-    marginRight: 8,
-    alignItems: 'center',
+    alignItems: "center",
   },
-  summaryBtnPrimary: {
-    flex: 1,
-    paddingVertical: 10,
-    borderRadius: 10,
-    backgroundColor: '#4287f5',
-    marginLeft: 8,
-    alignItems: 'center',
-  },
-  summaryBtnTextSecondary: {
+  summaryButtonText: {
+    color: "white",
+    fontWeight: "700",
     fontSize: 16,
-    fontWeight: '600',
-    color: '#333',
-  },
-  summaryBtnTextPrimary: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: 'white',
   },
 });

@@ -1,12 +1,12 @@
-import 'react-native-gesture-handler';
-import * as React from 'react';
-import { NavigationContainer } from '@react-navigation/native';
-import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import "react-native-gesture-handler";
+import * as React from "react";
+import { NavigationContainer } from "@react-navigation/native";
+import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 
-import TimerScreen from './src/screens/TimerScreen';
-import ReportsScreen from './src/screens/ReportsScreen';
+import TimerScreen from "./src/screens/TimerScreen";
+import ReportsScreen from "./src/screens/ReportsScreen";
 
-import { HistoryProvider } from './src/context/HistoryContext';
+import { HistoryProvider } from "./src/context/HistoryContext";
 
 const Tab = createBottomTabNavigator();
 
@@ -14,7 +14,7 @@ export default function App() {
   return (
     <HistoryProvider>
       <NavigationContainer>
-        <Tab.Navigator screenOptions={{ headerTitleAlign: 'center' }}>
+        <Tab.Navigator screenOptions={{ headerTitleAlign: "center" }}>
           <Tab.Screen name="Zamanlayıcı" component={TimerScreen} />
           <Tab.Screen name="Raporlar" component={ReportsScreen} />
         </Tab.Navigator>

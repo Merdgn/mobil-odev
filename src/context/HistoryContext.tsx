@@ -3,10 +3,14 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 export type FocusHistoryItem = {
   id: string;
-  mode: string;
-  duration: number; // saniye
-  date: string;
-  category: string; // 🆕 EKLENDİ
+  mode: string;             // "Kısa", "Pomodoro", "Uzun"
+  duration: number;         // hedef süre (saniye)
+  date: string;             // ISO tarih
+  category: string;         // kategori adı
+  distractions: number;     // dikkat dağınıklığı sayısı
+  completed: boolean;       // true = tamamlandı, false = yarım kaldı
+  elapsedSeconds: number;   // geçen süre
+  remainingSeconds: number; // kalan süre
 };
 
 const STORAGE_KEY = "FOCUS_HISTORY";
@@ -22,7 +26,6 @@ const HistoryContext = createContext<HistoryContextType | null>(null);
 export const HistoryProvider = ({ children }: { children: React.ReactNode }) => {
   const [history, setHistory] = useState<FocusHistoryItem[]>([]);
 
-  // İlk yükleme
   useEffect(() => {
     loadHistory();
   }, []);
@@ -33,11 +36,31 @@ export const HistoryProvider = ({ children }: { children: React.ReactNode }) => 
       if (stored) {
         const parsed = JSON.parse(stored);
 
-        // 🛠 Eski kayıtlarda category yoksa "Belirtilmedi" ekle
-        const fixed = parsed.map((item: any) => ({
-          ...item,
-          category: item.category ?? "Belirtilmedi",
-        }));
+        // Eski kayıtları yeni alanlarla uyumlu hâle getir
+        const fixed: FocusHistoryItem[] = parsed.map((item: any) => {
+          const duration = Number(item.duration ?? 0);
+          const completed =
+            typeof item.completed === "boolean" ? item.completed : true;
+          const elapsed = Number(
+            item.elapsedSeconds ?? (completed ? duration : 0)
+          );
+          const remaining = Number(
+            item.remainingSeconds ?? (completed ? 0 : duration - elapsed)
+          );
+
+          return {
+            id: String(item.id),
+            mode: item.mode ?? "Bilinmiyor",
+            duration,
+            date: item.date ?? new Date().toISOString(),
+            category: item.category ?? "Belirtilmedi",
+            distractions:
+              typeof item.distractions === "number" ? item.distractions : 0,
+            completed,
+            elapsedSeconds: elapsed,
+            remainingSeconds: remaining < 0 ? 0 : remaining,
+          };
+        });
 
         setHistory(fixed);
       }
