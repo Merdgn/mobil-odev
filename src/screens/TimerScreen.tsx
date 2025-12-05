@@ -3,16 +3,17 @@ import {
   View,
   Text,
   StyleSheet,
-  Button,
   Alert,
   TouchableOpacity,
   Modal,
   AppState,
   Platform,
-  Vibration, 
+  Vibration,
+  TextInput,
 } from "react-native";
 import { useHistoryContext } from "../context/HistoryContext";
 import { useThemeContext } from "../context/ThemeContext";
+import { useSettingsContext } from "../context/SettingsContext";
 
 const DEMO_MODE = true;
 
@@ -34,7 +35,16 @@ type SessionSummary = {
 };
 
 export default function TimerScreen() {
-  const { isDark } = useThemeContext();
+  const { isDark, toggleTheme } = useThemeContext();
+
+  const {
+    vibrationEnabled,
+    setVibrationEnabled,
+    dailyGoalMinutes,
+    setDailyGoalMinutes,
+    todayTotalMinutes,
+    setTodayTotalMinutes,
+  } = useSettingsContext();
 
   const sessionCategoryRef = useRef<string | null>(null);
 
@@ -44,6 +54,7 @@ export default function TimerScreen() {
   const [seconds, setSeconds] = useState<number>(DURATIONS.pomodoro);
   const [running, setRunning] = useState<boolean>(false);
   const [isPaused, setIsPaused] = useState<boolean>(false);
+  const [settingsVisible, setSettingsVisible] = useState(false);
 
   const intervalRef = useRef<number | null>(null);
 
@@ -95,8 +106,10 @@ export default function TimerScreen() {
           setIsPaused(true);
           setNeedToAskOnReturn(true);
 
-           // 🔔 Dikkat dağıldı titreşimi
-    Vibration.vibrate(300);
+          // 🔔 Dikkat dağıldı titreşimi (ayar açıksa)
+          if (vibrationEnabled && Platform.OS !== "web") {
+            Vibration.vibrate(300);
+          }
         }
       }
 
@@ -128,7 +141,7 @@ export default function TimerScreen() {
     });
 
     return () => sub.remove();
-  }, []);
+  }, [vibrationEnabled]);
 
   // ===== Mod değişince reset =====
   useEffect(() => {
@@ -174,8 +187,10 @@ export default function TimerScreen() {
         ? "Pomodoro"
         : "Uzun";
 
-          // 🔔 Başarılı seans için titreşim
-  Vibration.vibrate(800); // 800 ms titreşim
+    // 🔔 Başarılı seans için titreşim
+    if (vibrationEnabled && Platform.OS !== "web") {
+      Vibration.vibrate(800);
+    }
 
     const finishedAt = new Date().toISOString();
     const categoryLabel = sessionCategoryRef.current ?? "Belirtilmedi";
@@ -269,7 +284,7 @@ export default function TimerScreen() {
     }, 0);
   };
 
-  // ===== Başlat =====()
+  // ===== Başlat =====
   const start = () => {
     if (isPaused && sessionCategoryRef.current) {
       setRunning(true);
@@ -363,6 +378,9 @@ export default function TimerScreen() {
         modePillBg: "#e5e7eb",
       };
 
+  const safeGoal = dailyGoalMinutes > 0 ? dailyGoalMinutes : 1;
+  const progress = Math.min(todayTotalMinutes / safeGoal, 1);
+
   return (
     <View
       style={[
@@ -370,6 +388,31 @@ export default function TimerScreen() {
         { backgroundColor: palette.screenBg },
       ]}
     >
+      {/* Üst header: Zamanlayıcı + Ayarlar + Tema */}
+      <View style={styles.header}>
+        <Text style={[styles.headerTitle, { color: palette.mainText }]}>
+          Zamanlayıcı
+        </Text>
+
+        <View style={styles.headerRight}>
+          <TouchableOpacity
+            style={styles.iconButton}
+            onPress={() => setSettingsVisible(true)}
+          >
+            <Text style={styles.iconText}>⚙️</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.iconButton}
+            onPress={toggleTheme}
+          >
+            <Text style={styles.iconText}>
+              {isDark ? "🌙" : "☀️"}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
       <View
         style={[
           styles.card,
@@ -463,7 +506,10 @@ export default function TimerScreen() {
           <View style={styles.buttonsRow}>
             {!running && !isPaused && (
               <TouchableOpacity
-                style={[styles.primaryButton, { backgroundColor: palette.accent }]}
+                style={[
+                  styles.primaryButton,
+                  { backgroundColor: palette.accent },
+                ]}
                 onPress={start}
               >
                 <Text style={styles.primaryButtonText}>Başlat</Text>
@@ -472,7 +518,10 @@ export default function TimerScreen() {
 
             {isPaused && !running && (
               <TouchableOpacity
-                style={[styles.primaryButton, { backgroundColor: "#f97316" }]}
+                style={[
+                  styles.primaryButton,
+                  { backgroundColor: "#f97316" },
+                ]}
                 onPress={start}
               >
                 <Text style={styles.primaryButtonText}>Devam Et</Text>
@@ -481,7 +530,10 @@ export default function TimerScreen() {
 
             {running && (
               <TouchableOpacity
-                style={[styles.primaryButton, { backgroundColor: "#f97316" }]}
+                style={[
+                  styles.primaryButton,
+                  { backgroundColor: "#f97316" },
+                ]}
                 onPress={pause}
               >
                 <Text style={styles.primaryButtonText}>Duraklat</Text>
@@ -612,7 +664,8 @@ export default function TimerScreen() {
                         { color: isDark ? "#e5e7eb" : "#111827" },
                       ]}
                     >
-                      Kalan Süre: {formatDuration(summary.remainingSeconds)}
+                      Kalan Süre:{" "}
+                      {formatDuration(summary.remainingSeconds)}
                     </Text>
                   </>
                 )}
@@ -642,6 +695,191 @@ export default function TimerScreen() {
             >
               <Text style={styles.summaryButtonText}>Tamam</Text>
             </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* AYARLAR MODALI */}
+      <Modal
+        visible={settingsVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setSettingsVisible(false)}
+      >
+        <View style={styles.settingsOverlay}>
+          <View
+            style={[
+              styles.settingsBox,
+              { backgroundColor: isDark ? "#020617" : "#ffffff" },
+            ]}
+          >
+            <View style={styles.settingsHeaderRow}>
+              <Text
+                style={[
+                  styles.settingsTitle,
+                  { color: isDark ? "#111827" : "#111827" },
+                ]}
+              >
+                Ayarlar
+              </Text>
+              <TouchableOpacity
+                onPress={() => setSettingsVisible(false)}
+              >
+                <Text style={styles.settingsCloseText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <Text
+              style={[
+                styles.settingsSubtitle,
+                { color: isDark ? "#e5e7eb" : "#6b7280" },
+              ]}
+            >
+              Uygulamanın davranışını kendine göre özelleştir ✨
+            </Text>
+
+            {/* Titreşim */}
+            <View style={styles.settingsSection}>
+              <Text
+                style={[
+                  styles.settingsSectionTitle,
+                  { color: isDark ? "#f9fafb" : "#111827" },
+                ]}
+              >
+                Titreşim
+              </Text>
+              <View style={styles.settingsRow}>
+                <View style={{ flex: 1 }}>
+                  <Text
+                    style={[
+                      styles.settingsRowTitle,
+                      { color: isDark ? "#f9fafb" : "#111827" },
+                    ]}
+                  >
+                    Titreşim
+                  </Text>
+                  <Text
+                    style={[
+                      styles.settingsRowSubtitle,
+                      { color: isDark ? "#9ca3af" : "#6b7280" },
+                    ]}
+                  >
+                    Seans bittiğinde ve dikkat dağıldığında titreşim gönder.
+                  </Text>
+                </View>
+
+                <TouchableOpacity
+                  style={[
+                    styles.switchOuter,
+                    vibrationEnabled
+                      ? styles.switchOuterOn
+                      : styles.switchOuterOff,
+                  ]}
+                  onPress={() => setVibrationEnabled(!vibrationEnabled)}
+                >
+                  <View
+                    style={[
+                      styles.switchThumb,
+                      vibrationEnabled
+                        ? styles.switchThumbOn
+                        : styles.switchThumbOff,
+                    ]}
+                  />
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* Günlük Hedef */}
+            <View style={styles.settingsSection}>
+              <Text
+                style={[
+                  styles.settingsSectionTitle,
+                  { color: isDark ? "#f9fafb" : "#111827" },
+                ]}
+              >
+                Günlük Hedef
+              </Text>
+
+              <View style={styles.settingsRow}>
+                <View style={{ flex: 1 }}>
+                  <Text
+                    style={[
+                      styles.settingsRowTitle,
+                      { color: isDark ? "#f9fafb" : "#111827" },
+                    ]}
+                  >
+                    Günlük Hedef
+                  </Text>
+                  <Text
+                    style={[
+                      styles.settingsRowSubtitle,
+                      { color: isDark ? "#9ca3af" : "#6b7280" },
+                    ]}
+                  >
+                    Günde toplam odaklanmak istediğin süre (dakika).
+                  </Text>
+                </View>
+
+                <View style={styles.goalInputWrapper}>
+                  <TextInput
+                    style={[
+                      styles.goalInput,
+                      {
+                        color: isDark ? "#f9fafb" : "#111827",
+                        borderColor: isDark ? "#374151" : "#d1d5db",
+                        backgroundColor: isDark ? "#020617" : "#ffffff",
+                      },
+                    ]}
+                    keyboardType="numeric"
+                    value={String(dailyGoalMinutes)}
+                    onChangeText={(txt) => {
+                      const cleaned = txt.replace(/[^0-9]/g, "");
+                      const val = cleaned === "" ? 0 : parseInt(cleaned, 10);
+                      setDailyGoalMinutes(isNaN(val) ? 0 : val);
+                    }}
+                  />
+                  <Text
+                    style={[
+                      styles.goalInputSuffix,
+                      { color: isDark ? "#9ca3af" : "#6b7280" },
+                    ]}
+                  >
+                    dk
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.progressBlock}>
+                <Text
+                  style={[
+                    styles.progressText,
+                    { color: isDark ? "#e5e7eb" : "#4b5563" },
+                  ]}
+                >
+                  Bugün: {todayTotalMinutes.toFixed(1)} dk / Hedef:{" "}
+                  {dailyGoalMinutes} dk
+                </Text>
+
+                <View
+                  style={[
+                    styles.progressBarOuter,
+                    {
+                      backgroundColor: isDark ? "#111827" : "#e5e7eb",
+                    },
+                  ]}
+                >
+                  <View
+                    style={[
+                      styles.progressBarInner,
+                      {
+                        width: `${progress * 100}%`,
+                        backgroundColor: "#22c55e",
+                      },
+                    ]}
+                  />
+                </View>
+              </View>
+            </View>
           </View>
         </View>
       </Modal>
@@ -683,6 +921,32 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingVertical: 32,
   },
+
+  // HEADER
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 16,
+  },
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+  },
+  headerRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  iconButton: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 999,
+  },
+  iconText: {
+    fontSize: 20,
+  },
+
   card: {
     flex: 1,
     borderRadius: 32,
@@ -793,6 +1057,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "600",
   },
+
   modalContainer: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.45)",
@@ -819,6 +1084,7 @@ const styles = StyleSheet.create({
     fontSize: 17,
     textAlign: "center",
   },
+
   summaryOverlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.55)",
@@ -850,5 +1116,123 @@ const styles = StyleSheet.create({
     color: "white",
     fontSize: 16,
     fontWeight: "700",
+  },
+
+  // SETTINGS MODAL
+  settingsOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.45)",
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 16,
+  },
+  settingsBox: {
+    width: "100%",
+    maxWidth: 420,
+    borderRadius: 24,
+    padding: 20,
+  },
+  settingsHeaderRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  settingsTitle: {
+    fontSize: 24,
+    fontWeight: "900",
+  },
+  settingsCloseText: {
+    fontSize: 22,
+  },
+  settingsSubtitle: {
+    fontSize: 14,
+    marginBottom: 16,
+  },
+  settingsSection: {
+    marginTop: 12,
+    marginBottom: 8,
+  },
+  settingsSectionTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    marginBottom: 8,
+  },
+  settingsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  settingsRowTitle: {
+    fontSize: 15,
+    fontWeight: "600",
+  },
+  settingsRowSubtitle: {
+    fontSize: 13,
+    marginTop: 2,
+  },
+
+  switchOuter: {
+    width: 48,
+    height: 28,
+    borderRadius: 999,
+    padding: 2,
+    justifyContent: "center",
+  },
+  switchOuterOn: {
+    backgroundColor: "#22c55e",
+    alignItems: "flex-end",
+  },
+  switchOuterOff: {
+    backgroundColor: "#9ca3af",
+    alignItems: "flex-start",
+  },
+  switchThumb: {
+    width: 22,
+    height: 22,
+    borderRadius: 999,
+    backgroundColor: "#ffffff",
+  },
+  switchThumbOn: {
+    shadowColor: "#22c55e",
+    shadowOpacity: 0.4,
+    shadowRadius: 4,
+  },
+  switchThumbOff: {},
+
+  goalInputWrapper: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    marginLeft: 8,
+  },
+  goalInput: {
+    minWidth: 60,
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    textAlign: "center",
+  },
+  goalInputSuffix: {
+    fontSize: 14,
+  },
+
+  progressBlock: {
+    marginTop: 10,
+  },
+  progressText: {
+    fontSize: 13,
+    marginBottom: 4,
+  },
+  progressBarOuter: {
+    width: "100%",
+    height: 10,
+    borderRadius: 999,
+    overflow: "hidden",
+  },
+  progressBarInner: {
+    height: "100%",
+    borderRadius: 999,
   },
 });

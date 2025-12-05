@@ -1,14 +1,19 @@
 import "react-native-gesture-handler";
 import * as React from "react";
 import { Text, TouchableOpacity } from "react-native";
-import { NavigationContainer, DefaultTheme, DarkTheme } from "@react-navigation/native";
+import {
+  NavigationContainer,
+  DefaultTheme,
+} from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 
 import TimerScreen from "./src/screens/TimerScreen";
 import ReportsScreen from "./src/screens/ReportsScreen";
+import SettingsScreen from "./src/screens/SettingsScreen";
 
 import { HistoryProvider } from "./src/context/HistoryContext";
 import { ThemeProvider, useThemeContext } from "./src/context/ThemeContext";
+import { SettingsProvider } from "./src/context/SettingsContext";
 
 const Tab = createBottomTabNavigator();
 
@@ -57,14 +62,13 @@ function RootTabs() {
 export default function App() {
   return (
     <ThemeProvider>
-      <HistoryProvider>
-        {/* Navigation theme'i de sisteme uyduralım */}
-        <NavigationContainer
-          theme={DefaultTheme} // renkleri kendimiz override ettiğimiz için burası çok kritik değil
-        >
-          <RootTabs />
-        </NavigationContainer>
-      </HistoryProvider>
+      <SettingsProvider>
+        <HistoryProvider>
+          <NavigationContainer theme={DefaultTheme}>
+            <RootTabs />
+          </NavigationContainer>
+        </HistoryProvider>
+      </SettingsProvider>
     </ThemeProvider>
   );
 }
