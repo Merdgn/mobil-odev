@@ -9,6 +9,7 @@ import {
   Modal,
   AppState,
   Platform,
+  Vibration, 
 } from "react-native";
 import { useHistoryContext } from "../context/HistoryContext";
 import { useThemeContext } from "../context/ThemeContext";
@@ -93,6 +94,9 @@ export default function TimerScreen() {
           setRunning(false);
           setIsPaused(true);
           setNeedToAskOnReturn(true);
+
+           // 🔔 Dikkat dağıldı titreşimi
+    Vibration.vibrate(300);
         }
       }
 
@@ -169,6 +173,9 @@ export default function TimerScreen() {
         : selectedMode === "pomodoro"
         ? "Pomodoro"
         : "Uzun";
+
+          // 🔔 Başarılı seans için titreşim
+  Vibration.vibrate(800); // 800 ms titreşim
 
     const finishedAt = new Date().toISOString();
     const categoryLabel = sessionCategoryRef.current ?? "Belirtilmedi";
@@ -262,7 +269,7 @@ export default function TimerScreen() {
     }, 0);
   };
 
-  // ===== Başlat =====
+  // ===== Başlat =====()
   const start = () => {
     if (isPaused && sessionCategoryRef.current) {
       setRunning(true);
