@@ -35,7 +35,7 @@ type SessionSummary = {
 };
 
 export default function TimerScreen() {
-  const { isDark, toggleTheme } = useThemeContext();
+  const { isDark } = useThemeContext();
 
   const {
     vibrationEnabled,
@@ -43,7 +43,6 @@ export default function TimerScreen() {
     dailyGoalMinutes,
     setDailyGoalMinutes,
     todayTotalMinutes,
-    setTodayTotalMinutes,
   } = useSettingsContext();
 
   const sessionCategoryRef = useRef<string | null>(null);
@@ -74,6 +73,9 @@ export default function TimerScreen() {
   const [summaryVisible, setSummaryVisible] = useState(false);
   const [summary, setSummary] = useState<SessionSummary | null>(null);
 
+  // Web için "Devam etmek ister misin?" modalı
+  const [returnPromptVisible, setReturnPromptVisible] = useState(false);
+
   // Refs always current
   useEffect(() => {
     runningRef.current = running;
@@ -93,12 +95,11 @@ export default function TimerScreen() {
 
   // ===== AppState (arka plan) =====
   useEffect(() => {
-    if (Platform.OS === "web") return;
-
     const sub = AppState.addEventListener("change", (next) => {
       const prev = appState.current;
       appState.current = next;
 
+      // Aktiften arka plana / inactve'e geçti
       if (prev === "active" && next.match(/inactive|background/)) {
         if (runningRef.current) {
           setDistractions((p) => p + 1);
@@ -106,41 +107,49 @@ export default function TimerScreen() {
           setIsPaused(true);
           setNeedToAskOnReturn(true);
 
-          // 🔔 Dikkat dağıldı titreşimi (ayar açıksa)
           if (vibrationEnabled && Platform.OS !== "web") {
             Vibration.vibrate(300);
           }
         }
       }
 
+      // Arka plandan tekrar aktif hale döndü
       if (
         (prev === "inactive" || prev === "background") &&
         next === "active"
       ) {
         if (needToAskOnReturnRef.current && secondsRef.current > 0) {
-          Alert.alert("Dikkat Dağıldı 😟", "Devam etmek ister misin?", [
-            {
-              text: "Hayır",
-              style: "cancel",
-              onPress: () => {
-                handleGiveUp();
-                setNeedToAskOnReturn(false);
+          if (Platform.OS === "web") {
+            // Web: kendi modal'ımızı aç
+            setReturnPromptVisible(true);
+          } else {
+            // iOS / Android: Alert kullan
+            Alert.alert("Dikkat Dağıldı 😟", "Devam etmek ister misin?", [
+              {
+                text: "Hayır",
+                style: "cancel",
+                onPress: () => {
+                  handleGiveUp();
+                  setNeedToAskOnReturn(false);
+                },
               },
-            },
-            {
-              text: "Evet",
-              onPress: () => {
-                setRunning(true);
-                setIsPaused(false);
-                setNeedToAskOnReturn(false);
+              {
+                text: "Evet",
+                onPress: () => {
+                  setRunning(true);
+                  setIsPaused(false);
+                  setNeedToAskOnReturn(false);
+                },
               },
-            },
-          ]);
+            ]);
+          }
         }
       }
     });
 
-    return () => sub.remove();
+    return () => {
+      sub.remove();
+    };
   }, [vibrationEnabled]);
 
   // ===== Mod değişince reset =====
@@ -388,7 +397,7 @@ export default function TimerScreen() {
         { backgroundColor: palette.screenBg },
       ]}
     >
-      {/* Üst header: Zamanlayıcı + Ayarlar + Tema */}
+      {/* Üst header: Zamanlayıcı + Ayarlar */}
       <View style={styles.header}>
         <Text style={[styles.headerTitle, { color: palette.mainText }]}>
           Zamanlayıcı
@@ -400,15 +409,6 @@ export default function TimerScreen() {
             onPress={() => setSettingsVisible(true)}
           >
             <Text style={styles.iconText}>⚙️</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.iconButton}
-            onPress={toggleTheme}
-          >
-            <Text style={styles.iconText}>
-              {isDark ? "🌙" : "☀️"}
-            </Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -562,6 +562,92 @@ export default function TimerScreen() {
           </View>
         </View>
       </View>
+
+      {/* Web için "Devam etmek ister misin?" modalı */}
+      {Platform.OS === "web" && (
+        <Modal
+          transparent
+          animationType="fade"
+          visible={returnPromptVisible}
+          onRequestClose={() => setReturnPromptVisible(false)}
+        >
+          <View
+            style={{
+              flex: 1,
+              backgroundColor: "rgba(0,0,0,0.4)",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <View
+              style={{
+                width: "90%",
+                maxWidth: 420,
+                backgroundColor: palette.cardBg,
+                borderRadius: 20,
+                padding: 20,
+              }}
+            >
+              <Text
+                style={{
+                  fontSize: 18,
+                  fontWeight: "700",
+                  marginBottom: 8,
+                  color: palette.mainText,
+                }}
+              >
+                Dikkat Dağıldı 😟
+              </Text>
+              <Text
+                style={{
+                  marginBottom: 16,
+                  color: palette.secondaryText,
+                }}
+              >
+                Devam etmek ister misin?
+              </Text>
+
+              <View
+                style={{
+                  flexDirection: "row",
+                  justifyContent: "flex-end",
+                }}
+              >
+                <TouchableOpacity
+                  onPress={() => {
+                    handleGiveUp();
+                    setNeedToAskOnReturn(false);
+                    setReturnPromptVisible(false);
+                  }}
+                  style={{ marginRight: 16 }}
+                >
+                  <Text style={{ color: "#ff4d4f", fontWeight: "600" }}>
+                    Hayır
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  onPress={() => {
+                    setRunning(true);
+                    setIsPaused(false);
+                    setNeedToAskOnReturn(false);
+                    setReturnPromptVisible(false);
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: palette.bigCircleBorder,
+                      fontWeight: "600",
+                    }}
+                  >
+                    Evet
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+      )}
 
       {/* Kategori Modalı */}
       <Modal visible={categoryModalVisible} transparent animationType="slide">
@@ -717,14 +803,12 @@ export default function TimerScreen() {
               <Text
                 style={[
                   styles.settingsTitle,
-                  { color: isDark ? "#111827" : "#111827" },
+                  { color: "#111827" },
                 ]}
               >
                 Ayarlar
               </Text>
-              <TouchableOpacity
-                onPress={() => setSettingsVisible(false)}
-              >
+              <TouchableOpacity onPress={() => setSettingsVisible(false)}>
                 <Text style={styles.settingsCloseText}>✕</Text>
               </TouchableOpacity>
             </View>
