@@ -15,21 +15,22 @@ import { useHistoryContext } from "../context/HistoryContext";
 import { useThemeContext } from "../context/ThemeContext";
 import { useSettingsContext } from "../context/SettingsContext";
 
-const DEMO_MODE = true;
+// FINAL: Gerçek süreler (dakika * 60 saniye)
+const DEMO_MODE = false;
 
 const DURATIONS = {
-  short: DEMO_MODE ? 15 : 15 * 60,
-  pomodoro: DEMO_MODE ? 25 : 25 * 60,
-  long: DEMO_MODE ? 50 : 50 * 60,
+  short: DEMO_MODE ? 15 : 15 * 60, // 15 dk
+  pomodoro: DEMO_MODE ? 25 : 25 * 60, // 25 dk
+  long: DEMO_MODE ? 50 : 50 * 60, // 50 dk
 };
 
-// DEMO_MODE açıkken 1 "dk" = 1 birim, gerçek modda 1 dk = 60 sn
+// 1 birim = 1 dk => 60 sn
 const MINUTE_STEP = DEMO_MODE ? 1 : 60;
 
 type SessionSummary = {
   modeLabel: string;
   category: string;
-  durationSeconds: number;
+  durationSeconds: number; // rapora giden "odak süresi"
   distractions: number;
   finishedAt: string;
   completed: boolean;
@@ -50,7 +51,7 @@ export default function TimerScreen() {
 
   const sessionCategoryRef = useRef<string | null>(null);
 
-  // Bu seans için planlanan toplam süre (dk ayarı, +/- ile değişiyor)
+  // Bu seans için planlanan toplam süre (kullanıcı +/- ile değiştirdiğinde güncellenir)
   const sessionPlannedSecondsRef = useRef<number>(DURATIONS.pomodoro);
 
   const [selectedMode, setSelectedMode] =
@@ -105,7 +106,7 @@ export default function TimerScreen() {
       const prev = appState.current;
       appState.current = next;
 
-      // Aktiften arka plana / inactve'e geçti
+      // Aktiften arka plana / inactive'e geçti
       if (prev === "active" && next.match(/inactive|background/)) {
         if (runningRef.current) {
           setDistractions((p) => p + 1);
@@ -207,7 +208,7 @@ export default function TimerScreen() {
         ? "Pomodoro"
         : "Uzun";
 
-    // 🔔 Başarılı seans için titreşim
+    // Başarılı seans için titreşim
     if (vibrationEnabled && Platform.OS !== "web") {
       Vibration.vibrate(800);
     }
@@ -218,7 +219,7 @@ export default function TimerScreen() {
     const summaryData: SessionSummary = {
       modeLabel,
       category: categoryLabel,
-      durationSeconds: duration,
+      durationSeconds: duration, // planlanan süre kadar odaklanmış say
       distractions: distractionsRef.current,
       finishedAt,
       completed: true,
@@ -274,7 +275,7 @@ export default function TimerScreen() {
     const summaryData: SessionSummary = {
       modeLabel,
       category: categoryLabel,
-      durationSeconds: duration,
+      durationSeconds: duration, // planlanan süre bilgisi
       distractions: distractionsRef.current,
       finishedAt,
       completed: false,
@@ -317,7 +318,7 @@ export default function TimerScreen() {
     const planned =
       sessionPlannedSecondsRef.current || DURATIONS[selectedMode];
     const remaining = secondsRef.current;
-    const elapsed = Math.max(0, planned - remaining);
+    const elapsed = Math.max(0, planned - remaining); // gerçek odak süresi (sn)
 
     const modeLabel =
       selectedMode === "short"
@@ -332,10 +333,10 @@ export default function TimerScreen() {
     const summaryData: SessionSummary = {
       modeLabel,
       category: categoryLabel,
-      durationSeconds: elapsed, // Gerçek odak süresi
+      durationSeconds: elapsed, // burada sadece GERÇEK odak süresini kaydediyoruz
       distractions: distractionsRef.current,
       finishedAt,
-      completed: true, // Kullanıcı isteyerek bitirdi
+      completed: true, // kullanıcı isteyerek bitirdi
       elapsedSeconds: elapsed,
       remainingSeconds: remaining,
     };
@@ -344,7 +345,7 @@ export default function TimerScreen() {
       addHistory({
         id: Date.now().toString(),
         mode: modeLabel,
-        duration: elapsed,
+        duration: elapsed, // raporlar için esas odak süresi
         date: finishedAt,
         category: categoryLabel,
         distractions: distractionsRef.current,
@@ -383,7 +384,7 @@ export default function TimerScreen() {
   const chooseCategory = (cat: string) => {
     sessionCategoryRef.current = cat;
 
-    // O anki ekranda görünen süreyi bu seansın planlanan süresi olarak kaydediyoruz
+    // O an ekranda görünen süreyi bu seansın planlanan süresi olarak kaydediyoruz
     sessionPlannedSecondsRef.current = secondsRef.current;
 
     setCategoryModalVisible(false);
@@ -405,8 +406,7 @@ export default function TimerScreen() {
     const delta = deltaMinutes * MINUTE_STEP;
 
     setSeconds((prev) => {
-      const next = Math.max(MINUTE_STEP, prev + delta);
-      // Mod değişmediyse planlanan süreyi de güncelleyelim
+      const next = Math.max(MINUTE_STEP, prev + delta); // en az 1 dk
       sessionPlannedSecondsRef.current = next;
       return next;
     });
@@ -486,9 +486,8 @@ export default function TimerScreen() {
   const safeGoal = dailyGoalMinutes > 0 ? dailyGoalMinutes : 1;
   const progress = Math.min(todayTotalMinutes / safeGoal, 1);
 
-  const currentMinutes = Math.floor(
-    seconds / (DEMO_MODE ? 1 : 60)
-  );
+  // Ekrandaki süreyi dakika cinsinden göster
+  const currentMinutes = Math.max(1, Math.round(seconds / 60));
 
   return (
     <View
@@ -498,20 +497,20 @@ export default function TimerScreen() {
       ]}
     >
       {/* Üst header: Zamanlayıcı + Ayarlar */}
-      <View style={styles.header}>
-        <Text style={[styles.headerTitle, { color: palette.mainText }]}>
-          Zamanlayıcı
-        </Text>
+<View style={styles.header}>
+  <Text style={[styles.headerTitle, { color: palette.mainText }]}>
+    Odak Paneli
+  </Text>
 
-        <View style={styles.headerRight}>
-          <TouchableOpacity
-            style={styles.iconButton}
-            onPress={() => setSettingsVisible(true)}
-          >
-            <Text style={styles.iconText}>⚙️</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
+  <View style={styles.headerRight}>
+    <TouchableOpacity
+      style={styles.iconButton}
+      onPress={() => setSettingsVisible(true)}
+    >
+      <Text style={styles.iconText}>⚙️</Text>
+    </TouchableOpacity>
+  </View>
+</View>
 
       <View
         style={[
@@ -1292,6 +1291,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     marginTop: 28,
     gap: 12,
+    flexWrap: "wrap",
   },
   primaryButton: {
     flex: 1.1,
