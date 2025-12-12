@@ -145,6 +145,7 @@ fokus/
         ├─ ReportsScreen.tsx    # Raporlar / Dashboard ekranı
         └─ SettingsScreen.tsx   # Ayarlar ekranı
 
+```
 
 ## 5. Kurulum ve Çalıştırma
 
@@ -158,6 +159,17 @@ Bu bölüm, projeyi kendi bilgisayarınızda nasıl çalıştıracağınızı a�
 
 ### 5.2. Kaynak Kodun İndirilmesi
 
-```bash
 git clone https://github.com/Merdgn/mobil-odev.git
 cd mobil-odev
+
+### 5.3. Bağımlılıkların Kurulması
+
+Projeyi ilk kez çalıştırmadan önce gerekli paketlerin yüklenmesi gerekir:
+
+npm install
+
+### 5.4. Uygulamanın Çalıştırılması
+npx expo start
+
+Not: Bağlantı problemi yaşarsanız alternatif olarak:
+npx expo start --clear --tunnel
