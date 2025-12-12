@@ -23,6 +23,9 @@ const DURATIONS = {
   long: DEMO_MODE ? 50 : 50 * 60,
 };
 
+// DEMO_MODE açıkken 1 "dk" = 1 birim, gerçek modda 1 dk = 60 sn
+const MINUTE_STEP = DEMO_MODE ? 1 : 60;
+
 type SessionSummary = {
   modeLabel: string;
   category: string;
@@ -46,6 +49,9 @@ export default function TimerScreen() {
   } = useSettingsContext();
 
   const sessionCategoryRef = useRef<string | null>(null);
+
+  // Bu seans için planlanan toplam süre (dk ayarı, +/- ile değişiyor)
+  const sessionPlannedSecondsRef = useRef<number>(DURATIONS.pomodoro);
 
   const [selectedMode, setSelectedMode] =
     useState<"short" | "pomodoro" | "long">("pomodoro");
@@ -155,10 +161,13 @@ export default function TimerScreen() {
   // ===== Mod değişince reset =====
   useEffect(() => {
     stopTimerCompletely();
-    setSeconds(DURATIONS[selectedMode]);
+    const base = DURATIONS[selectedMode];
+    setSeconds(base);
+    sessionPlannedSecondsRef.current = base; // yeni moda göre varsayılan süre
     setDistractions(0);
     setIsPaused(false);
     setNeedToAskOnReturn(false);
+    sessionCategoryRef.current = null;
   }, [selectedMode]);
 
   // ===== Timer mekanizması =====
@@ -186,9 +195,11 @@ export default function TimerScreen() {
     };
   }, [running]);
 
-  // ===== Oturum Tamamlandı =====
+  // ===== Oturum Tamamlandı (süre 0'a inince) =====
   const handleComplete = () => {
-    const duration = DURATIONS[selectedMode];
+    const duration =
+      sessionPlannedSecondsRef.current || DURATIONS[selectedMode];
+
     const modeLabel =
       selectedMode === "short"
         ? "Kısa"
@@ -236,14 +247,17 @@ export default function TimerScreen() {
       setDistractions(0);
       setNeedToAskOnReturn(false);
       setSeconds(DURATIONS[selectedMode]);
+      sessionPlannedSecondsRef.current = DURATIONS[selectedMode];
       setRunning(false);
       setIsPaused(false);
+      sessionCategoryRef.current = null;
     }, 0);
   };
 
-  // ===== Oturum Yarım Kaldı =====
+  // ===== Oturum Yarım Kaldı (dikkat dağınıklığı sonrası "Hayır") =====
   const handleGiveUp = () => {
-    const duration = DURATIONS[selectedMode];
+    const duration =
+      sessionPlannedSecondsRef.current || DURATIONS[selectedMode];
     const remaining = secondsRef.current;
     const elapsed = duration - remaining;
 
@@ -289,7 +303,68 @@ export default function TimerScreen() {
       setRunning(false);
       setIsPaused(false);
       setSeconds(DURATIONS[selectedMode]);
+      sessionPlannedSecondsRef.current = DURATIONS[selectedMode];
       setDistractions(0);
+      sessionCategoryRef.current = null;
+    }, 0);
+  };
+
+  // ===== Seansı erken bitir ve kaydet (Bitir ve Kaydet) =====
+  const handleFinishNow = () => {
+    // Seans hiç başlamamışsa veya özet zaten gösteriliyorsa yapma
+    if (!running && !isPaused) return;
+
+    const planned =
+      sessionPlannedSecondsRef.current || DURATIONS[selectedMode];
+    const remaining = secondsRef.current;
+    const elapsed = Math.max(0, planned - remaining);
+
+    const modeLabel =
+      selectedMode === "short"
+        ? "Kısa"
+        : selectedMode === "pomodoro"
+        ? "Pomodoro"
+        : "Uzun";
+
+    const finishedAt = new Date().toISOString();
+    const categoryLabel = sessionCategoryRef.current ?? "Belirtilmedi";
+
+    const summaryData: SessionSummary = {
+      modeLabel,
+      category: categoryLabel,
+      durationSeconds: elapsed, // Gerçek odak süresi
+      distractions: distractionsRef.current,
+      finishedAt,
+      completed: true, // Kullanıcı isteyerek bitirdi
+      elapsedSeconds: elapsed,
+      remainingSeconds: remaining,
+    };
+
+    setTimeout(() => {
+      addHistory({
+        id: Date.now().toString(),
+        mode: modeLabel,
+        duration: elapsed,
+        date: finishedAt,
+        category: categoryLabel,
+        distractions: distractionsRef.current,
+        completed: true,
+        elapsedSeconds: elapsed,
+        remainingSeconds: remaining,
+      });
+    }, 0);
+
+    setSummary(summaryData);
+    setSummaryVisible(true);
+
+    setTimeout(() => {
+      setRunning(false);
+      setIsPaused(false);
+      setSeconds(DURATIONS[selectedMode]);
+      sessionPlannedSecondsRef.current = DURATIONS[selectedMode];
+      setDistractions(0);
+      setNeedToAskOnReturn(false);
+      sessionCategoryRef.current = null;
     }, 0);
   };
 
@@ -308,8 +383,10 @@ export default function TimerScreen() {
   const chooseCategory = (cat: string) => {
     sessionCategoryRef.current = cat;
 
+    // O anki ekranda görünen süreyi bu seansın planlanan süresi olarak kaydediyoruz
+    sessionPlannedSecondsRef.current = secondsRef.current;
+
     setCategoryModalVisible(false);
-    setSeconds(DURATIONS[selectedMode]);
     setDistractions(0);
     setIsPaused(false);
     setRunning(true);
@@ -321,11 +398,28 @@ export default function TimerScreen() {
     setIsPaused(true);
   };
 
+  // ===== Süreyi ± ile ayarlama (sadece seans başlamadan) =====
+  const adjustDuration = (deltaMinutes: number) => {
+    if (running || isPaused) return;
+
+    const delta = deltaMinutes * MINUTE_STEP;
+
+    setSeconds((prev) => {
+      const next = Math.max(MINUTE_STEP, prev + delta);
+      // Mod değişmediyse planlanan süreyi de güncelleyelim
+      sessionPlannedSecondsRef.current = next;
+      return next;
+    });
+  };
+
   const resetSessionState = () => {
     setRunning(false);
     setIsPaused(false);
     setSeconds(DURATIONS[selectedMode]);
+    sessionPlannedSecondsRef.current = DURATIONS[selectedMode];
     setDistractions(0);
+    sessionCategoryRef.current = null;
+    setNeedToAskOnReturn(false);
   };
 
   const stopTimerCompletely = () => {
@@ -337,7 +431,9 @@ export default function TimerScreen() {
   const format = (s: number) => {
     const m = Math.floor(s / 60);
     const r = s % 60;
-    return `${m.toString().padStart(2, "0")}:${r.toString().padStart(2, "0")}`;
+    return `${m.toString().padStart(2, "0")}:${r
+      .toString()
+      .padStart(2, "0")}`;
   };
 
   const formatDuration = (s: number) => {
@@ -389,6 +485,10 @@ export default function TimerScreen() {
 
   const safeGoal = dailyGoalMinutes > 0 ? dailyGoalMinutes : 1;
   const progress = Math.min(todayTotalMinutes / safeGoal, 1);
+
+  const currentMinutes = Math.floor(
+    seconds / (DEMO_MODE ? 1 : 60)
+  );
 
   return (
     <View
@@ -447,7 +547,7 @@ export default function TimerScreen() {
             <ModeButton label="Uzun" mode="long" />
           </View>
 
-          {/* Büyük sayaç */}
+          {/* Büyük sayaç + süre ayarlama */}
           <View style={styles.timerWrapper}>
             <View
               style={[
@@ -470,6 +570,32 @@ export default function TimerScreen() {
               <Text style={[styles.timerText, { color: palette.mainText }]}>
                 {format(seconds)}
               </Text>
+            </View>
+
+            {/* Süreyi ± ile ayarlama satırı */}
+            <View style={styles.durationAdjustRow}>
+              <TouchableOpacity
+                style={styles.durationAdjustButton}
+                onPress={() => adjustDuration(-1)}
+              >
+                <Text style={styles.durationAdjustText}>- 1 dk</Text>
+              </TouchableOpacity>
+
+              <Text
+                style={[
+                  styles.durationLabel,
+                  { color: palette.secondaryText },
+                ]}
+              >
+                Süre: {currentMinutes} dk
+              </Text>
+
+              <TouchableOpacity
+                style={styles.durationAdjustButton}
+                onPress={() => adjustDuration(1)}
+              >
+                <Text style={styles.durationAdjustText}>+ 1 dk</Text>
+              </TouchableOpacity>
             </View>
           </View>
 
@@ -537,6 +663,29 @@ export default function TimerScreen() {
                 onPress={pause}
               >
                 <Text style={styles.primaryButtonText}>Duraklat</Text>
+              </TouchableOpacity>
+            )}
+
+            {/* Bitir ve Kaydet: seans çalışıyorken veya duraklamışken görünsün */}
+            {(running || isPaused) && (
+              <TouchableOpacity
+                style={[
+                  styles.secondaryButton,
+                  {
+                    backgroundColor: "transparent",
+                    borderColor: "#22c55e",
+                  },
+                ]}
+                onPress={handleFinishNow}
+              >
+                <Text
+                  style={[
+                    styles.secondaryButtonText,
+                    { color: "#22c55e", fontSize: 14 },
+                  ]}
+                >
+                  Bitir ve Kaydet
+                </Text>
               </TouchableOpacity>
             )}
 
@@ -1100,6 +1249,33 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     letterSpacing: 2,
   },
+
+  // Süreyi ± ile ayarlama satırı
+  durationAdjustRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: 16,
+    width: "100%",
+    paddingHorizontal: 8,
+  },
+  durationAdjustButton: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "#4b5563",
+  },
+  durationAdjustText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#4b5563",
+  },
+  durationLabel: {
+    fontSize: 14,
+    fontWeight: "600",
+  },
+
   bottomRow: {
     flexDirection: "row",
     justifyContent: "space-between",
