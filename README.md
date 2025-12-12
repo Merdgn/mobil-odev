@@ -74,7 +74,7 @@ Amaç, kullanıcının başlattığı odaklanma seanslarını (Pomodoro benzeri)
   - Bugün toplam odaklanma süresi
   - Tüm zamanların toplam odaklanma süresi
   - Toplam dikkat dağınıklığı sayısı
-- **Grafikler** (react-native-chart-kit)
+- **Grafikler** (`react-native-chart-kit`)
   - Son 7 güne ait odaklanma süreleri → Bar Chart
   - Kategorilere göre odaklanma dağılımı → Pie Chart  
     (Örnek: %50 Kitap Okuma, %50 Meditasyon)
@@ -87,7 +87,7 @@ Amaç, kullanıcının başlattığı odaklanma seanslarını (Pomodoro benzeri)
 ### 🎨 Tema & Ayarlar
 
 - **Tema**
-  - Açık / koyu tema desteği (`ThemeContext`)  
+  - Açık / koyu tema desteği (`ThemeContext`)
 - **Ayarlar Modalı**
   - Titreşim aç/kapat
   - Günlük hedef süresi (dakika cinsinden)
@@ -144,3 +144,20 @@ fokus/
         ├─ TimerScreen.tsx      # Zamanlayıcı ekranı (Ana ekran)
         ├─ ReportsScreen.tsx    # Raporlar / Dashboard ekranı
         └─ SettingsScreen.tsx   # Ayarlar ekranı
+
+
+## 5. Kurulum ve Çalıştırma
+
+Bu bölüm, projeyi kendi bilgisayarınızda nasıl çalıştıracağınızı açıklar.
+
+### 5.1. Önkoşullar
+
+- Node.js (önerilen: 18+)
+- npm 
+- Telefonda **Expo Go** uygulaması (iOS / Android)
+
+### 5.2. Kaynak Kodun İndirilmesi
+
+```bash
+git clone https://github.com/Merdgn/mobil-odev.git
+cd mobil-odev
