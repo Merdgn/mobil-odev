@@ -1,16 +1,18 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
-  View,
-  Text,
-  StyleSheet,
   Alert,
-  TouchableOpacity,
-  Modal,
   AppState,
+  Modal,
   Platform,
-  Vibration,
+  ScrollView,
+  StyleSheet,
+  Text,
   TextInput,
+  TouchableOpacity,
+  Vibration,
+  View,
 } from "react-native";
+
 import { useHistoryContext } from "../context/HistoryContext";
 import { useThemeContext } from "../context/ThemeContext";
 import { useSettingsContext } from "../context/SettingsContext";
@@ -490,7 +492,7 @@ export default function TimerScreen() {
   const currentMinutes = Math.max(1, Math.round(seconds / 60));
 
   return (
-    <View
+    <ScrollView
       style={[
         styles.container,
         { backgroundColor: palette.screenBg },
@@ -1115,7 +1117,7 @@ export default function TimerScreen() {
           </View>
         </View>
       </Modal>
-    </View>
+    </ScrollView>
   );
 
   function ModeButton({
